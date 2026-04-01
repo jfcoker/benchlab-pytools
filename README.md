@@ -36,12 +36,19 @@ The launcher can operate in interactive mode or via command-line flags.
 
 ## Installation
 
-BENCHLAB PyTools relies on Python 3.8+ and optional modules for each mode.  
+BENCHLAB PyTools uses Python 3.13 and optional modules for each mode.  
 
-Install core dependencies:
+This fork of the tool uses [uv](https://docs.astral.sh/uv/#installation) for dependency management. After installing uv, create and activate a virtual enviroment:
 
 ```
-pip install -r requirements.txt
+uv venv --python 3.13
+source .venv/bin/activate
+```
+
+Install the core dependencies using:
+
+```
+uv pip install -r requirements.txt
 ```
 
 Optional mode-specific dependencies are in:
