@@ -70,7 +70,7 @@ def install_pytools_requirements():
     logger.info("Checking PyTools requirements...")
     try:
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-r", req_file]
+            ["uv","pip","install", "-r", req_file]
         )
     except subprocess.CalledProcessError:
         logger.error("PyTools dependency installation failed.")
@@ -86,7 +86,7 @@ try:
     from packaging.version import Version
     from packaging.markers import Marker
 except ModuleNotFoundError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "packaging"])
+    subprocess.check_call(["uv","pip","install", "-r", req_file]) 
     from importlib import metadata
     from packaging.requirements import Requirement
     from packaging.version import Version
@@ -141,7 +141,7 @@ def install_requirements_file(req_file, label):
     logger.info(f"Installing {label} requirements...")
     try:
         subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-r", req_file]
+            ["uv","pip","install", "-r", req_file]
         )
         return True
     except subprocess.CalledProcessError:
