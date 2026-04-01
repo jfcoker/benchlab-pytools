@@ -313,8 +313,11 @@ def interactive_menu():
             for i, name in enumerate(modes_list, 1):
                 print(f"{i}. {name} - {MODES[list(MODES.keys())[i-1]]['desc']}")
 
-            print("\nSelect a feature by number or type 'info':")
+            print("\nSelect a feature by number or type 'info' or 'quit':")
             choice = input("> ").strip().lower()
+
+            if choice in ("q", "quit", "exit"):
+                sys.exit(0)
 
             if choice == "info":
                 show_info()
