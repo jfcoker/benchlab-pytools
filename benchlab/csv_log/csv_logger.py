@@ -30,11 +30,14 @@ def discover_fleet_devices():
     return devices
 
 
-def sensor_logger_fleet(device_ser_map, interval=1.0):
+def sensor_logger_fleet(device_ser_map, interval=1.0, excl_patterns=[]):
     """Log multiple devices to individual CSVs with unified fleet logic."""
     global logging_active
     logging_active = True
     writers = {}
+
+    # Dictionary for holding which sensor headers to log for each device (after applying exclusion patterns)
+    device_headers = {}
 
     # open one CSV file per device and write header
     for uid, ser in device_ser_map.items():
@@ -43,7 +46,10 @@ def sensor_logger_fleet(device_ser_map, interval=1.0):
         try:
             f = open(filename, "w", newline="")
             data = translate_sensor_struct(read_sensors(ser))
-            header = ["Timestamp"] + list(data.keys())
+            header_full = ["Timestamp"] + list(data.keys())
+            # Filter out excluded sensor patterns
+            header = [h for h in header_full if not any(pattern in h for pattern in excl_patterns)]
+            device_headers[uid] = header  # Store the header for this device
             writer = csv.DictWriter(f, fieldnames=header)
             writer.writeheader()
             writers[uid] = (f, writer)
@@ -58,7 +64,9 @@ def sensor_logger_fleet(device_ser_map, interval=1.0):
                 if uid not in writers:
                     continue
                 try:
-                    data = translate_sensor_struct(read_sensors(ser))
+                    data_full = translate_sensor_struct(read_sensors(ser))
+                    device_header = device_headers[uid]
+                    data = {k: v for k, v in data_full.items() if k in device_header}
                     row = {"Timestamp": datetime.now().isoformat(), **data}
                     f, writer = writers[uid]
                     writer.writerow(row)
@@ -80,10 +88,10 @@ def sensor_logger_fleet(device_ser_map, interval=1.0):
             f.close()
 
 
-def start_fleet_logger(device_ser_map, interval=1.0):
+def start_fleet_logger(device_ser_map, interval=1.0, excl_patterns=[]):
     global logging_active
     logging_active = True
-    thread = threading.Thread(target=sensor_logger_fleet, args=(device_ser_map, interval))
+    thread = threading.Thread(target=sensor_logger_fleet, args=(device_ser_map, interval, excl_patterns))
     thread.daemon = True
     thread.start()
     return thread
@@ -94,7 +102,7 @@ def stop_fleet_logger():
     logging_active = False
 
 
-def run_csv_logger(interval: float = 1.0):
+def run_csv_logger(interval: float = 1.0, excl_patterns: list = []):
     """Run fleet logger without TUI, with optional device selection."""
     print("Running BENCHLAB CSV fleet logger...\n")
     fleet_devices = discover_fleet_devices()
@@ -156,7 +164,7 @@ def run_csv_logger(interval: float = 1.0):
         return
 
     # Start logging thread
-    thread = start_fleet_logger(device_ser_map, interval=interval)
+    thread = start_fleet_logger(device_ser_map, interval=interval, excl_patterns=excl_patterns)
 
     try:
         print("\nLogging started. Press Ctrl+C to stop.")

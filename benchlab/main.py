@@ -26,6 +26,8 @@ def get_parser():
                         help="Launch VU configuration interface")
     parser.add_argument("-wigidash", action="store_true",
                        help="Connect to WigiDash")
+    parser.add_argument("-exclude", "--exclude", nargs="+", default=[],
+                        help="List of sensor name patterns to exclude from csv logging (e.g., 'CPU', 'GPU')")
 
     return parser
 
@@ -59,7 +61,7 @@ def launch_mode():
     elif args.logfleet:
         try:
             from benchlab.csv_log.csv_logger import run_csv_logger
-            run_csv_logger(args.interval)
+            run_csv_logger(args.interval, args.exclude)
         except ModuleNotFoundError:
             print("CSV logger not available in this build.")
             return
