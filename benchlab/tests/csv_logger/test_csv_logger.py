@@ -125,6 +125,22 @@ def test_exclude_patterns_filters_sensor_keys(mock_sensor_struct):
         "Non-excluded Power columns should be present"
 
 
+def test_translate_sensor_struct_includes_keys(mock_sensor_struct):
+    """Test that translate_sensor_struct accepts an include list."""
+    from benchlab.core.sensor_translation import translate_sensor_struct
+
+    base_data = translate_sensor_struct(mock_sensor_struct)
+    excl_patterns = ["Fan", "Temp_Sensor"]
+    include_keys = [key for key in base_data.keys() if not any(pattern in key for pattern in excl_patterns)]
+
+    data = translate_sensor_struct(mock_sensor_struct, incl_sensors=include_keys)
+
+    assert set(data.keys()) == set(include_keys)
+    assert "SYS_Power" in data
+    for pattern in excl_patterns:
+        assert all(pattern not in key for key in data.keys())
+
+
 def test_no_exclusion_includes_all_sensors(mock_sensor_struct):
     """
     Test that when no exclusion patterns are provided, all sensor keys are included.
