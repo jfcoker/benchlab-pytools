@@ -10,7 +10,7 @@ import time
 import types
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 import logging
 
@@ -34,6 +34,7 @@ class LoggerConfig:
     format: str = "csv"          # csv | json
     silent_mode: bool = False
     auto_select: bool = False
+    include_keys: Union[List[str], str] = "all"
 
 
 class DeviceConfig:
@@ -79,6 +80,8 @@ class EnhancedCSVLogger:
         self.config = config
         self.args = args
         self.selected_uids: List[str] = []
+        # None means include all keys; otherwise a list of keys to include (case-insensitive)
+        self.selected_keys: Optional[List[str]] = None
         self.stats = ChannelStats()
         self.batcher: Optional[BatchingLogger] = None
         self.logging_active = False
@@ -194,7 +197,13 @@ class EnhancedCSVLogger:
             # Strip the device-supplied 'timestamp' key (case-insensitive) to
             # avoid a duplicate column alongside our own 'Timestamp'.
             data = {k: v for k, v in data.items() if k.lower() != "timestamp"}
+
             row = {"Timestamp": datetime.now().isoformat(), "uid": uid, **data}
+
+            # If selected_keys is configured, filter telemetry to only those keys
+            if self.selected_keys is not None:
+                sel = {s.lower() for s in self.selected_keys}
+                row = {k: v for k, v in row.items() if k.lower() in sel}
 
             if self.batcher:
                 self.batcher.add_message(row)
@@ -257,6 +266,18 @@ class EnhancedCSVLogger:
             logging.error("No devices selected")
             return
         self.selected_uids = [d.uid for d in selected]
+
+        # Assign selected keys from config (None => include all)
+        if isinstance(self.config.include_keys, list):
+            self.selected_keys = [k.strip() for k in self.config.include_keys if k and k.strip()]
+        elif isinstance(self.config.include_keys, str):
+            if self.config.include_keys.lower() == "all":
+                self.selected_keys = None
+            else:
+                # allow comma-separated string in config
+                self.selected_keys = [k.strip() for k in self.config.include_keys.split(",") if k.strip()]
+        else:
+            self.selected_keys = None
 
         self.create_batcher()
 
@@ -324,6 +345,13 @@ def load_config(config_file: str = "csv_logger.config") -> LoggerConfig:
                 "silent_mode", config.silent_mode)
             config.auto_select = s.getboolean(
                 "auto_select", config.auto_select)
+            # Parse include_keys: allow 'all' or comma-separated list
+            if s.get("include_keys") is not None:
+                ik = s.get("include_keys").strip()
+                if not ik or ik.lower() == "all":
+                    config.include_keys = "all"
+                else:
+                    config.include_keys = [k.strip() for k in ik.split(",") if k.strip()]
 
     config.interval = float(os.getenv("CSV_LOG_INTERVAL", config.interval))
     config.output_dir = os.getenv("CSV_LOG_OUTPUT_DIR", config.output_dir)

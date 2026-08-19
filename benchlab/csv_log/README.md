@@ -58,6 +58,7 @@ buffer_size = 100                 # Rows buffered before a batched write
 format = csv                      # Output format: csv or json (currently informational; batcher writes CSV)
 silent_mode = false                # Silent operation (also auto-selects devices)
 auto_select = false                # Auto-select all discovered devices, skip the prompt
+include_keys = all                 # Output all columns to the CSV, or only a subset by provided a comma-separated list
 ```
 
 ### Environment Variables
@@ -141,6 +142,20 @@ Timestamp,uid,SYS_Power,CPU_Power,GPU_Power,Temp1,Temp2,...
 
 The `format` config key is accepted by `LoggerConfig` but the batcher currently always writes CSV; JSON output is not implemented.
 
+If `include_keys` is set in `LoggerConfig` to a value other than 'all', then a reduced number of columns can be logged. `include_keys` can be provided with a comma-separated list of column names. For instance, with:
+
+```
+include_keys = Timestamp,SYS_Power
+```
+
+Then the outputted CSV will have rows:
+
+```
+Timestamp,SYS_Power
+2025-10-06T10:15:01.123456,120
+2025-10-06T10:15:02.123456,118
+```
+
 ---
 
 ## Behavior Notes
@@ -197,6 +212,7 @@ class LoggerConfig:
     format: str = "csv"          # accepted, but only CSV output is implemented
     silent_mode: bool = False
     auto_select: bool = False
+    include_keys: Union[List[str], str] = "all"
 ```
 
 ---
