@@ -188,12 +188,13 @@ class DataSourceManager:
 
         logger.info("Disconnected from datasource")
 
-    def select_device(self, uid: str) -> bool:
+    def select_device(self, uid: str, suppress_info_output=False) -> bool:
         """Select a different device for monitoring."""
         with self._lock:
             if uid in self._devices:
                 self._selected_uid = uid
-                logger.info(f"Selected device: {uid}")
+                if not suppress_info_output:
+                    logger.info(f"Selected device: {uid}")
                 return True
             return False
 

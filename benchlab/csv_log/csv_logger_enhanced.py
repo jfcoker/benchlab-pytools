@@ -187,7 +187,7 @@ class EnhancedCSVLogger:
             logging.warning(f"No manager for device {uid}")
             return False
         try:
-            self.manager.select_device(uid)
+            self.manager.select_device(uid, suppress_info_output=True)
             snapshot = self.manager.snapshot()
             data = snapshot.get("sensor_data")
             if not data:
@@ -198,7 +198,8 @@ class EnhancedCSVLogger:
             # avoid a duplicate column alongside our own 'Timestamp'.
             data = {k: v for k, v in data.items() if k.lower() != "timestamp"}
 
-            row = {"Timestamp": datetime.now().isoformat(), "uid": uid, **data}
+            now = datetime.now().isoformat()
+            row = {"Timestamp": now, "uid": uid, **data}
 
             # If selected_keys is configured, filter telemetry to only those keys
             if self.selected_keys is not None:
@@ -211,10 +212,13 @@ class EnhancedCSVLogger:
                 logging.debug(f"Data for {uid}: {row}")
 
             if not self.config.silent_mode:
-                logging.debug(
+                print(
+                    "\r"
+                    f"{now}"
                     f"[{uid}] SYS:{data.get('SYS_Power', 0):.0f}W  "
                     f"CPU:{data.get('CPU_Power', 0):.0f}W  "
-                    f"GPU:{data.get('GPU_Power', 0):.0f}W"
+                    f"GPU:{data.get('GPU_Power', 0):.0f}W",
+                    end=""
                 )
             return True
         except Exception as e:
