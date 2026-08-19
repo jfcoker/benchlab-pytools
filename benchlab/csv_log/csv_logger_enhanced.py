@@ -395,7 +395,6 @@ def run_enhanced_csv_logger(args=None):
         )
 
     config = load_config()
-    config.interval = args.interval
 
     if os.getenv("BENCHLAB_AUTO_SELECT", "").lower() == "true":
         config.auto_select = True
