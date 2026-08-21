@@ -372,8 +372,7 @@ class FastAPIDataSource(DataSource):
                 return True
             else:
                 logger.error(
-                    f"FastAPI health check returned {
-                        response.status_code}")
+                    f"FastAPI health check returned {response.status_code}")
         except Exception as e:
             logger.error(f"Failed to connect to FastAPI server: {e}")
 
@@ -596,7 +595,15 @@ class MQTTDataSource(DataSource):
 
         with self._lock:
             return [
-                {'uid': uid, 'port': info.get('com_port', 'unknown')}
+                {
+                    'uid': uid,
+                    'port': info.get('com_port', 'unknown'),
+                    'firmware': info.get('firmware', '?'),
+                    'variant': info.get('variant'),
+                    'VendorId': info.get('VendorId', 0),
+                    'ProductId': info.get('ProductId', 0),
+                    'FwVersion': info.get('FwVersion', 0),
+                }
                 for uid, info in self._device_info.items()
             ]
 
@@ -691,6 +698,16 @@ def _normalise_cs_telemetry(sensors_raw: list) -> Dict[str, Any]:
         "HPWR2_P": "HPWR2_Power", "HPWR2_V": "HPWR2_Voltage",
         "HPWR2_I": "HPWR2_Current",
 
+        # BL2 12VHPWR per-pin sense lines (HPWR{1,2}_W{1..6}), shown on
+        # the TUI's 12VHPWR tab as HPWR{n}_W{m}_{Power,Current,Voltage}
+        **{
+            f"HPWR{n}_W{m}_{suffix}": f"HPWR{n}_W{m}_{tui_suffix}"
+            for n in (1, 2)
+            for m in range(1, 7)
+            for suffix, tui_suffix in (
+                ("P", "Power"), ("I", "Current"), ("V", "Voltage"))
+        },
+
         # Board voltages
         "VDD": "Vdd",
         "VREF": "Vref",
@@ -727,6 +744,34 @@ def _normalise_cs_telemetry(sensors_raw: list) -> Dict[str, Any]:
         tui_key = SHORT_NAME_MAP.get(short, short)
         result[tui_key] = value
 
+    return result
+
+
+def _normalise_cs_device_info(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalise a C# service device dict into the shape the TUI expects.
+
+    The C# service's /devices, /device/{uid}/info, and discovery-pipe
+    responses use camelCase keys (productId, vendorId, firmwareVersion —
+    confirmed against BenchlabSensorWorker.cs/HttpApiServer.cs in the
+    BENCHLAB_Service repo). Note the HTTP API's /devices and
+    /device/{uid}/info endpoints only send productId — no vendorId or
+    firmwareVersion — so those default to 0 there; only the named-pipe
+    discovery/GetServiceInfo responses include all three.
+    DirectDataSource/FastAPIDataSource populate PascalCase keys
+    (ProductId, VendorId, FwVersion) plus a computed 'variant' — this
+    adds those same keys without discarding what the C# service sent.
+    """
+    result = dict(d)
+    product_id = d.get("ProductId", d.get("productId", 0))
+    vendor_id = d.get("VendorId", d.get("vendorId", 0))
+    fw_version = d.get("FwVersion", d.get("firmwareVersion", 0))
+    result["ProductId"] = product_id
+    result["VendorId"] = vendor_id
+    result["FwVersion"] = fw_version
+    result.setdefault("firmware", d.get("firmware", fw_version))
+    # 0x11 = BENCHLAB_BL2_PRODUCT_ID (see DirectDataSource/tui_core.py).
+    result.setdefault(
+        "variant", "BL2" if product_id == 0x11 else "ORIGINAL")
     return result
 
 
@@ -793,14 +838,31 @@ class NamedPipeDataSource(DataSource):
             self._pipe_names.clear()
             for d in devices:
                 uid = d.get("guid") or d.get("deviceName", "unknown")
+                # Field names confirmed against BenchlabSensorWorker.cs's
+                # ListDevices response in the BENCHLAB_Service repo.
+                product_id = d.get("productId", 0)
+                vendor_id = d.get("vendorId", 0)
+                fw_version = d.get("firmwareVersion", 0)
+                # 0x11 = BENCHLAB_BL2_PRODUCT_ID (see
+                # DirectDataSource/tui_core.py); hardcoded rather than
+                # importing benchlab_pycore, which named_pipe consumers
+                # of the C# service don't necessarily have installed.
+                variant = "BL2" if product_id == 0x11 else "ORIGINAL"
                 self._devices[uid] = {
                     "uid": uid,
                     "port": d.get("port", "unknown"),
                     "name": d.get("deviceName", "unknown"),
-                    "productId": d.get("productId", 0),
+                    "productId": product_id,
                     "status": d.get("status", "unknown"),
                     "sensorCount": d.get("sensorCount", 0),
                     "pipeName": d.get("pipeName", ""),
+                    # PascalCase aliases matching DirectDataSource's shape,
+                    # so consumers (e.g. the TUI) can detect BL1/BL2.
+                    "firmware": fw_version,
+                    "variant": variant,
+                    "VendorId": vendor_id,
+                    "ProductId": product_id,
+                    "FwVersion": fw_version,
                 }
                 self._pipe_names[uid] = d.get("pipeName", "")
 
@@ -1025,9 +1087,8 @@ class ServiceHttpDataSource(DataSource):
 
         if resp.status_code != 200:
             logger.error(
-                f"BenchLab service health check failed (HTTP {
-                    resp.status_code}) " f"at {
-                    self.base_url}/health")
+                f"BenchLab service health check failed "
+                f"(HTTP {resp.status_code}) at {self.base_url}/health")
             return False
 
         # Fetch initial device list
@@ -1043,7 +1104,7 @@ class ServiceHttpDataSource(DataSource):
                 for d in devices:
                     uid = d.get("uid", "")
                     if uid:
-                        self._devices[uid] = d
+                        self._devices[uid] = _normalise_cs_device_info(d)
 
         self._connected = True
         self._stop_event.clear()
@@ -1051,8 +1112,7 @@ class ServiceHttpDataSource(DataSource):
             target=self._worker_loop, daemon=True)
         self._worker_thread.start()
         logger.info(
-            f"Connected to BenchLab service HTTP API at {
-                self.base_url}")
+            f"Connected to BenchLab service HTTP API at {self.base_url}")
         return True
 
     def disconnect(self) -> None:
@@ -1149,7 +1209,8 @@ class ServiceHttpDataSource(DataSource):
                         for d in devices:
                             uid = d.get("uid", "")
                             if uid:
-                                self._devices[uid] = d
+                                self._devices[uid] = (
+                                    _normalise_cs_device_info(d))
 
                 # Poll telemetry for each device
                 with self._lock:
